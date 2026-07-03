@@ -90,7 +90,7 @@
 
   function buildPreview(){
     state.previewRows=state.contracts.map((c,i)=>{const reg=String(c.registerId??'');const csv=state.csvByRegisterId.get(reg);const current=String(c.externalContractId??'');let info='No CSV match', level='danger', updateable=false;if(csv){updateable=true;info=current===String(csv.oldValue)?'OK':'Old value differs';level=current===String(csv.oldValue)?'ok':'warn';}
-      return {index:i,selected:updateable,updateable,contract:c,registerId:reg,nodeCode:c.nodeCode||'',nodeName:c.nodeName||'',employeeId:c.employeeId||'',contractId:getContractId(c),fromDate:getFrom(c),tillDate:getTill(c),current,csvOld:csv?csv.oldValue:'',csvNew:csv?csv.newValue:'',info,level};});
+      return {index:i,selected:false,updateable,contract:c,registerId:reg,nodeCode:c.nodeCode||'',nodeName:c.nodeName||'',employeeId:c.employeeId||'',contractId:getContractId(c),fromDate:getFrom(c),tillDate:getTill(c),current,csvOld:csv?csv.oldValue:'',csvNew:csv?csv.newValue:'',info,level};});
     rebuildNodeCodeList();
     state.nodeFilterSelected.clear();
     state.nodeCodeList.forEach(([code])=>state.nodeFilterSelected.add(code));
@@ -156,7 +156,7 @@
     const visible=state.visibleRows.length;
     const visibleUpdateable=state.visibleRows.filter(r=>r.updateable).length;
     const visibleSelected=state.visibleRows.filter(r=>r.selected).length;
-    els.summaryCounts.textContent=total+' contracts loaded; '+updateable+' matched CSV; '+selected+' selected. Visible: '+visible+'; visible updateable: '+visibleUpdateable+'; visible selected: '+visibleSelected+'.';
+    els.summaryCounts.textContent=total+' contracts loaded; '+updateable+' matched CSV; '+selected+' selected for update. Visible: '+visible+'; visible updateable: '+visibleUpdateable+'; visible selected: '+visibleSelected+'.';
     els.selectAll.checked=updateable>0&&selected===updateable;
     els.btnRunDry.disabled=selected===0;els.btnRunUpdate.disabled=selected===0;
     if(els.btnExportPreviewExcel)els.btnExportPreviewExcel.disabled=total===0;
@@ -174,7 +174,14 @@
   }
   function appendAuditLine(text){els.auditLog.textContent+=text+'\n';els.auditLog.scrollTop=els.auditLog.scrollHeight;}
   async function runUpdates(dry){
-    const rows=state.previewRows.filter(r=>r.selected);
+    const rows=state.previewRows.filter(r=>r.updateable && r.selected === true);
+    const visibleSelected=(state.visibleRows||[]).filter(r=>r.updateable && r.selected === true).length;
+    if(!rows.length){setStatus(els.updateStatus,'No selected updateable rows. Use the row checkboxes or Select filtered first.','warn');return;}
+    if(!dry){
+      const hiddenSelected=rows.length-visibleSelected;
+      const msg='Update '+rows.length+' selected contract record(s)?'+(hiddenSelected>0?'\n\nNote: '+hiddenSelected+' selected row(s) are currently hidden by filters and will also be updated.':'');
+      if(!window.confirm(msg))return;
+    }
     state.audit=[];els.auditLog.textContent='';els.progress.value=0;els.progressText.textContent='0%';
     setStatus(els.updateStatus,(dry?'Dry run':'Update')+' started for '+rows.length+' contracts. Max parallel employees: '+MAX_PARALLEL_PUTS+'; stagger '+MIN_STAGGER_MS+'-'+MAX_STAGGER_MS+' ms before PUT start.','');
     els.btnRunDry.disabled=true;els.btnRunUpdate.disabled=true;
