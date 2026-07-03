@@ -81,6 +81,36 @@
 
     <section class="card wide">
       <h2>4. Preview</h2>
+      <div class="filter-panel">
+        <div class="filter-grid">
+          <label>Search
+            <input id="filterSearch" type="text" placeholder="registerId, employeeId, contractId, node code/name..." />
+          </label>
+          <label>Info/status
+            <select id="filterInfo">
+              <option value="">All</option>
+              <option value="OK">OK</option>
+              <option value="Old value differs">Old value differs</option>
+              <option value="No CSV match">No CSV match</option>
+            </select>
+          </label>
+          <label class="check filter-check"><input id="filterSelectedOnly" type="checkbox" /> Selected only</label>
+          <label class="check filter-check"><input id="filterUpdateableOnly" type="checkbox" /> CSV matched only</label>
+        </div>
+        <details class="node-filter-box">
+          <summary>Node filter: <span id="nodeFilterSummary">All nodes</span></summary>
+          <div class="filter-actions small-actions">
+            <button id="btnNodeAll" type="button">All nodes</button>
+            <button id="btnNodeNone" type="button">No nodes</button>
+          </div>
+          <div id="nodeFilterList" class="node-filter-list"></div>
+        </details>
+        <div class="filter-actions">
+          <button id="btnSelectFiltered" type="button">Select filtered</button>
+          <button id="btnDeselectFiltered" type="button">Deselect filtered</button>
+          <button id="btnClearFilters" type="button">Clear filters</button>
+        </div>
+      </div>
       <div class="toolbar">
         <label class="check"><input id="selectAll" type="checkbox" checked /> Select all updateable rows</label>
         <span id="summaryCounts" class="muted">No data.</span>
