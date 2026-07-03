@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MANUS External ContractId Updater</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>MANUS External ContractId Updater</h1>
+      <p>Load active contracts from a payroll period start date, preview CSV matches, and update externalContractId safely.</p>
+    </div>
+    <div class="pill">Base URL: <span id="baseUrl">-</span></div>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>1. Connect</h2>
+      <div class="grid two">
+        <label>Endpoint
+          <select id="endpoint">
+            <option value="https://server.manus.plus">LIVE - server.manus.plus</option>
+            <option value="https://server-test.manus.plus" selected>TEST - server-test.manus.plus</option>
+            <option value="https://server-demo.manus.plus">DEMO - server-demo.manus.plus</option>
+          </select>
+        </label>
+        <label>Client
+          <input id="client" placeholder="client code" />
+        </label>
+        <label>Instance <span id="instanceHint">required for TEST/DEMO</span>
+          <input id="instance" placeholder="instance / uat" />
+        </label>
+        <label>Username
+          <input id="username" autocomplete="username" />
+        </label>
+        <label>Password
+          <input id="password" type="password" autocomplete="current-password" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btnLogin" class="primary">Log in</button>
+        <button id="btnLogout">Log out</button>
+      </div>
+      <div id="authStatus" class="status">Not authenticated.</div>
+    </section>
+
+    <section class="card">
+      <h2>2. Select payroll period</h2>
+      <div class="grid two">
+        <label>Node
+          <select id="nodeSelect" disabled><option value="">Log in first</option></select>
+        </label>
+        <label>Salary group
+          <select id="salaryGroupSelect" disabled><option value="">Select node first</option></select>
+        </label>
+        <label>Year
+          <input id="yearInput" type="number" step="1" />
+        </label>
+        <label>Salary period
+          <select id="salaryPeriodSelect" disabled><option value="">Select group/year first</option></select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btnLoadContracts" class="primary" disabled>Load contracts</button>
+      </div>
+      <div id="loadStatus" class="status">Ready.</div>
+    </section>
+
+    <section class="card">
+      <h2>3. CSV import</h2>
+      <p class="hint">Expected semicolon format: registerId;oldValue;registerId;newValue. The old value is shown as information only.</p>
+      <textarea id="csvText" placeholder="10609644;1;10609644;20231007"></textarea>
+      <div class="actions">
+        <input id="csvFile" type="file" accept=".csv,.txt" />
+        <button id="btnParseCsv">Parse CSV</button>
+      </div>
+      <div id="csvStatus" class="status">No CSV parsed.</div>
+    </section>
+
+    <section class="card wide">
+      <h2>4. Preview</h2>
+      <div class="toolbar">
+        <label class="check"><input id="selectAll" type="checkbox" checked /> Select all updateable rows</label>
+        <span id="summaryCounts" class="muted">No data.</span>
+        <button id="btnExportPreviewExcel" disabled>Download table Excel</button>
+      </div>
+      <div class="table-wrap">
+        <table id="previewTable">
+          <thead>
+            <tr>
+              <th>Update</th><th>RegisterId</th><th>Node Code</th><th>Node Name</th><th>EmployeeId</th><th>ContractId</th><th>From</th><th>Till</th><th>Current externalContractId</th><th>CSV old</th><th>CSV new</th><th>Info</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card wide">
+      <h2>5. Execute</h2>
+      <div class="actions">
+        <button id="btnRunDry" disabled>Dry run selected</button>
+        <button id="btnRunUpdate" class="danger" disabled>Update selected contracts</button>
+        <button id="btnExportAudit" disabled>Export audit CSV</button>
+      </div>
+      <div class="progress-row">
+        <progress id="progress" max="100" value="0"></progress>
+        <span id="progressText">0%</span>
+      </div>
+      <div id="updateStatus" class="status">No update started.</div>
+      <pre id="auditLog"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
