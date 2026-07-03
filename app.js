@@ -112,15 +112,38 @@
     setStatus(els.updateStatus,(dry?'Dry run':'Update')+' started for '+rows.length+' contracts. Max parallel employees: '+MAX_PARALLEL_PUTS+'; stagger '+MIN_STAGGER_MS+'-'+MAX_STAGGER_MS+' ms before PUT start.','');
     els.btnRunDry.disabled=true;els.btnRunUpdate.disabled=true;
     let done=0,failed=0,started=0;
+    const runStartedAt=Date.now();
+    const durations=[];
+
+    function formatDuration(ms){
+      if(!isFinite(ms)||ms<0)return '-';
+      const sec=Math.round(ms/1000);
+      const h=Math.floor(sec/3600);
+      const m=Math.floor((sec%3600)/60);
+      const s=sec%60;
+      if(h)return h+'h '+String(m).padStart(2,'0')+'m';
+      if(m)return m+'m '+String(s).padStart(2,'0')+'s';
+      return s+'s';
+    }
 
     function updateProgress(){
       const pct=rows.length?Math.round(done/rows.length*100):100;
+      const active=Math.max(0,started-done);
+      const elapsedMs=Date.now()-runStartedAt;
+      const throughput=elapsedMs>0?Math.round(done/(elapsedMs/3600000)):0;
+      const avgMs=durations.length?durations.reduce((a,b)=>a+b,0)/durations.length:0;
+      const remaining=rows.length-done;
+      const etaMs=done>0?(elapsedMs/done)*remaining:0;
       els.progress.value=pct;
-      els.progressText.textContent=pct+'% - remaining '+(rows.length-done)+' - active '+Math.max(0,started-done);
+      els.progressText.textContent=pct+'% - remaining '+remaining+' - active '+active+' - '+throughput+'/hour - ETA '+(done?formatDuration(etaMs):'-');
+      if(done>0){
+        setStatus(els.updateStatus,'Running regular PUTs: '+done+'/'+rows.length+' completed, '+active+' active, max '+MAX_PARALLEL_PUTS+', stagger '+MIN_STAGGER_MS+'-'+MAX_STAGGER_MS+' ms, avg PUT '+(avgMs?formatDuration(avgMs):'-')+', throughput '+throughput+'/hour, ETA '+formatDuration(etaMs)+'.','');
+      }
     }
 
     async function processRow(r){
       started++;
+      const rowStartedAt=Date.now();
       const payload=Object.assign({},r.contract);
       payload.externalContractId=r.csvNew;
       const audit={time:new Date().toISOString(),dryRun:dry,registerId:r.registerId,nodeCode:r.nodeCode,nodeName:r.nodeName,employeeId:r.employeeId,contractId:r.contractId,fromDate:r.fromDate,tillDate:r.tillDate,oldExternalContractId:r.current,csvOld:r.csvOld,newExternalContractId:r.csvNew,status:'',message:''};
@@ -150,6 +173,8 @@
         failed++;audit.status='FAILED';audit.message=e.message;
         appendAuditLine('FAILED | '+audit.registerId+' | '+audit.contractId+' | '+audit.message);
       }finally{
+        durations.push(Date.now()-rowStartedAt);
+        if(durations.length>100)durations.shift();
         done++;state.audit.push(audit);updateProgress();
       }
     }
@@ -222,7 +247,7 @@
     URL.revokeObjectURL(url);
   }
 
-  function exportAudit(){const header=['time','dryRun','registerId','nodeCode','nodeName','employeeId','contractId','fromDate','tillDate','oldExternalContractId','csvOld','newExternalContractId','status','message'];const lines=['sep=;',header.join(';')];state.audit.forEach(a=>lines.push(header.map(k=>'"'+String(a[k]??'').replace(/"/g,'""')+'"').join(';')));const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='manus_contract_update_audit.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
+  function exportAudit(){const header=['time','dryRun','registerId','nodeCode','nodeName','employeeId','contractId','fromDate','tillDate','oldExternalContractId','csvOld','newExternalContractId','status','message','url'];const lines=['sep=;',header.join(';')];state.audit.forEach(a=>lines.push(header.map(k=>'"'+String(a[k]??'').replace(/"/g,'""')+'"').join(';')));const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='manus_contract_update_audit.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
 
   els.btnLogin.addEventListener('click',login);els.btnLogout.addEventListener('click',logout);
   [els.endpoint,els.client,els.instance].forEach(e=>e.addEventListener('input',updateBase));
