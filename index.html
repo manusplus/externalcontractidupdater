@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MANUS External ContractId Updater</title>
+  <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_simple.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -116,15 +117,8 @@
         <span id="summaryCounts" class="muted">No data.</span>
         <button id="btnExportPreviewExcel" disabled>Download table Excel</button>
       </div>
-      <div class="table-wrap">
-        <table id="previewTable">
-          <thead>
-            <tr>
-              <th>Update</th><th>RegisterId</th><th>Node Code</th><th>Node Name</th><th>EmployeeId</th><th>ContractId</th><th>From</th><th>Till</th><th>Current externalContractId</th><th>CSV old</th><th>CSV new</th><th>Info</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="table-wrap tabulator-wrap">
+        <div id="previewTable"></div>
       </div>
     </section>
 
@@ -144,6 +138,7 @@
     </section>
   </main>
 
+  <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

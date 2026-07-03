@@ -1,8 +1,8 @@
 (function(){
   const SESSION_KEY='manus_contract_updater_session';
   const $=id=>document.getElementById(id);
-  const els={endpoint:$('endpoint'),client:$('client'),instance:$('instance'),username:$('username'),password:$('password'),baseUrl:$('baseUrl'),authStatus:$('authStatus'),nodeSelect:$('nodeSelect'),salaryGroupSelect:$('salaryGroupSelect'),salaryPeriodSelect:$('salaryPeriodSelect'),yearInput:$('yearInput'),btnLogin:$('btnLogin'),btnLogout:$('btnLogout'),btnLoadContracts:$('btnLoadContracts'),loadStatus:$('loadStatus'),csvText:$('csvText'),csvFile:$('csvFile'),btnParseCsv:$('btnParseCsv'),csvStatus:$('csvStatus'),filterSearch:$('filterSearch'),filterInfo:$('filterInfo'),filterSelectedOnly:$('filterSelectedOnly'),filterUpdateableOnly:$('filterUpdateableOnly'),nodeFilterList:$('nodeFilterList'),nodeFilterSummary:$('nodeFilterSummary'),btnNodeAll:$('btnNodeAll'),btnNodeNone:$('btnNodeNone'),btnSelectFiltered:$('btnSelectFiltered'),btnDeselectFiltered:$('btnDeselectFiltered'),btnClearFilters:$('btnClearFilters'),selectAll:$('selectAll'),summaryCounts:$('summaryCounts'),previewBody:document.querySelector('#previewTable tbody'),btnRunDry:$('btnRunDry'),btnRunUpdate:$('btnRunUpdate'),btnExportAudit:$('btnExportAudit'),btnExportPreviewExcel:$('btnExportPreviewExcel'),progress:$('progress'),progressText:$('progressText'),updateStatus:$('updateStatus'),auditLog:$('auditLog')};
-  const state={token:null,expiresAt:0,nodes:[],salaryGroups:[],salaryPeriods:[],contracts:[],csvRows:[],csvByRegisterId:new Map(),previewRows:[],visibleRows:[],nodeFilterSelected:new Set(),nodeCodeList:[],audit:[]};
+  const els={endpoint:$('endpoint'),client:$('client'),instance:$('instance'),username:$('username'),password:$('password'),baseUrl:$('baseUrl'),authStatus:$('authStatus'),nodeSelect:$('nodeSelect'),salaryGroupSelect:$('salaryGroupSelect'),salaryPeriodSelect:$('salaryPeriodSelect'),yearInput:$('yearInput'),btnLogin:$('btnLogin'),btnLogout:$('btnLogout'),btnLoadContracts:$('btnLoadContracts'),loadStatus:$('loadStatus'),csvText:$('csvText'),csvFile:$('csvFile'),btnParseCsv:$('btnParseCsv'),csvStatus:$('csvStatus'),filterSearch:$('filterSearch'),filterInfo:$('filterInfo'),filterSelectedOnly:$('filterSelectedOnly'),filterUpdateableOnly:$('filterUpdateableOnly'),nodeFilterList:$('nodeFilterList'),nodeFilterSummary:$('nodeFilterSummary'),btnNodeAll:$('btnNodeAll'),btnNodeNone:$('btnNodeNone'),btnSelectFiltered:$('btnSelectFiltered'),btnDeselectFiltered:$('btnDeselectFiltered'),btnClearFilters:$('btnClearFilters'),selectAll:$('selectAll'),summaryCounts:$('summaryCounts'),previewTable:$('previewTable'),btnRunDry:$('btnRunDry'),btnRunUpdate:$('btnRunUpdate'),btnExportAudit:$('btnExportAudit'),btnExportPreviewExcel:$('btnExportPreviewExcel'),progress:$('progress'),progressText:$('progressText'),updateStatus:$('updateStatus'),auditLog:$('auditLog')};
+  const state={token:null,expiresAt:0,nodes:[],salaryGroups:[],salaryPeriods:[],contracts:[],csvRows:[],csvByRegisterId:new Map(),previewRows:[],visibleRows:[],nodeFilterSelected:new Set(),nodeCodeList:[],selectedIds:new Set(),table:null,audit:[]};
   const MAX_PARALLEL_PUTS=3; // Run up to 3 employees in parallel; contract rows for the same employee are still processed sequentially.
   const MIN_STAGGER_MS=250;
   const MAX_STAGGER_MS=500;
@@ -90,7 +90,8 @@
 
   function buildPreview(){
     state.previewRows=state.contracts.map((c,i)=>{const reg=String(c.registerId??'');const csv=state.csvByRegisterId.get(reg);const current=String(c.externalContractId??'');let info='No CSV match', level='danger', updateable=false;if(csv){updateable=true;info=current===String(csv.oldValue)?'OK':'Old value differs';level=current===String(csv.oldValue)?'ok':'warn';}
-      return {index:i,selected:false,updateable,contract:c,registerId:reg,nodeCode:c.nodeCode||'',nodeName:c.nodeName||'',employeeId:c.employeeId||'',contractId:getContractId(c),fromDate:getFrom(c),tillDate:getTill(c),current,csvOld:csv?csv.oldValue:'',csvNew:csv?csv.newValue:'',info,level};});
+      const contractId=getContractId(c); const rowId=String(contractId||'no-contract')+'::'+String(c.employeeId||reg||'')+'::'+i; return {_rowId:rowId,index:i,selected:false,updateable,contract:c,registerId:reg,nodeCode:c.nodeCode||'',nodeName:c.nodeName||'',employeeId:c.employeeId||'',contractId:contractId,fromDate:getFrom(c),tillDate:getTill(c),current,csvOld:csv?csv.oldValue:'',csvNew:csv?csv.newValue:'',info,level};});
+    state.selectedIds.clear();
     rebuildNodeCodeList();
     state.nodeFilterSelected.clear();
     state.nodeCodeList.forEach(([code])=>state.nodeFilterSelected.add(code));
@@ -123,7 +124,7 @@
     nodes.forEach(([code,name])=>{
       const label=document.createElement('label');label.className='node-filter-option';
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=state.nodeFilterSelected.has(code);
-      cb.addEventListener('change',()=>{if(cb.checked)state.nodeFilterSelected.add(code);else state.nodeFilterSelected.delete(code);renderPreview();});
+      cb.addEventListener('change',()=>{if(cb.checked)state.nodeFilterSelected.add(code);else state.nodeFilterSelected.delete(code);applyPreviewFilters();});
       const span=document.createElement('span');span.textContent=code+(name?' - '+name:'');
       label.appendChild(cb);label.appendChild(span);els.nodeFilterList.appendChild(label);
     });
@@ -134,28 +135,92 @@
     const q=String(els.filterSearch&&els.filterSearch.value||'').trim().toLowerCase();
     if(q){const hay=[r.registerId,r.nodeCode,r.nodeName,r.employeeId,r.contractId,r.fromDate,r.tillDate,r.current,r.csvOld,r.csvNew,r.info].join(' ').toLowerCase();if(!hay.includes(q))return false;}
     const info=String(els.filterInfo&&els.filterInfo.value||'');if(info&&r.info!==info)return false;
-    if(els.filterSelectedOnly&&els.filterSelectedOnly.checked&&!r.selected)return false;
+    if(els.filterSelectedOnly&&els.filterSelectedOnly.checked&&!state.selectedIds.has(r._rowId))return false;
     if(els.filterUpdateableOnly&&els.filterUpdateableOnly.checked&&!r.updateable)return false;
     if(hasActiveNodeFilter()){const code=String(r.nodeCode||'').trim();if(!state.nodeFilterSelected.has(code))return false;}
     return true;
   }
   function filteredRows(){return state.previewRows.filter(rowMatchesFilters);}
 
-  function renderPreview(){
-    els.previewBody.innerHTML='';
-    const visible=filteredRows();state.visibleRows=visible;
-    const frag=document.createDocumentFragment();
-    visible.forEach((r)=>{const tr=document.createElement('tr');tr.innerHTML='<td></td><td>'+esc(r.registerId)+'</td><td>'+esc(r.nodeCode)+'</td><td>'+esc(r.nodeName)+'</td><td>'+esc(r.employeeId)+'</td><td>'+esc(r.contractId)+'</td><td>'+esc(r.fromDate)+'</td><td>'+esc(r.tillDate)+'</td><td>'+esc(r.current)+'</td><td>'+esc(r.csvOld)+'</td><td>'+esc(r.csvNew)+'</td><td class="info-'+r.level+'">'+esc(r.info)+'</td>';const cb=document.createElement('input');cb.type='checkbox';cb.disabled=!r.updateable;cb.checked=!!r.selected;cb.addEventListener('change',()=>{r.selected=cb.checked;renderPreviewControls();});tr.children[0].appendChild(cb);frag.appendChild(tr);});
-    els.previewBody.appendChild(frag);
+  function initPreviewTable(){
+    if(state.table || !els.previewTable)return;
+    if(typeof Tabulator==='undefined'){
+      setStatus(els.updateStatus,'Tabulator could not be loaded. Check internet/CDN access or use the previous non-Tabulator build.','danger');
+      return;
+    }
+    state.table=new Tabulator(els.previewTable,{
+      data:[],
+      index:'_rowId',
+      height:'560px',
+      layout:'fitDataStretch',
+      selectableRows:true,
+      selectableRowsCheck:function(row){return !!row.getData().updateable;},
+      placeholder:'No contract rows loaded.',
+      columns:[
+        {formatter:'rowSelection',titleFormatter:'rowSelection',hozAlign:'center',headerSort:false,width:52,cellClick:function(e,cell){cell.getRow().toggleSelect();}},
+        {title:'RegisterId',field:'registerId',headerFilter:'input',frozen:true,width:130},
+        {title:'Node Code',field:'nodeCode',headerFilter:'input',width:120},
+        {title:'Node Name',field:'nodeName',headerFilter:'input',width:180},
+        {title:'EmployeeId',field:'employeeId',headerFilter:'input',width:220},
+        {title:'ContractId',field:'contractId',headerFilter:'input',width:130},
+        {title:'From',field:'fromDate',headerFilter:'input',width:110},
+        {title:'Till',field:'tillDate',headerFilter:'input',width:110},
+        {title:'Current externalContractId',field:'current',headerFilter:'input',width:190},
+        {title:'CSV old',field:'csvOld',headerFilter:'input',width:100},
+        {title:'CSV new',field:'csvNew',headerFilter:'input',width:110},
+        {title:'Info',field:'info',headerFilter:'list',headerFilterParams:{values:{'':'All','OK':'OK','Old value differs':'Old value differs','No CSV match':'No CSV match'},clearable:true},formatter:function(cell){const d=cell.getRow().getData();return '<span class="info-'+esc(d.level)+'">'+esc(cell.getValue())+'</span>';},width:150}
+      ]
+    });
+    state.table.on('rowSelectionChanged',function(data){
+      state.selectedIds=new Set(data.map(r=>r._rowId));
+      state.previewRows.forEach(r=>{r.selected=state.selectedIds.has(r._rowId);});
+      renderPreviewControls();
+    });
+    state.table.on('dataFiltered',function(filters,rows){
+      state.visibleRows=rows.map(row=>row.getData());
+      renderPreviewControls();
+    });
+  }
+
+  function syncTableSelection(){
+    if(!state.table)return;
+    state.table.blockRedraw();
+    try{
+      state.table.deselectRow();
+      const ids=Array.from(state.selectedIds);
+      if(ids.length)state.table.selectRow(ids);
+    }finally{
+      state.table.restoreRedraw();
+    }
+    state.previewRows.forEach(r=>{r.selected=state.selectedIds.has(r._rowId);});
     renderPreviewControls();
   }
+
+  function applyPreviewFilters(){
+    if(!state.table)return;
+    state.table.setFilter(function(data){return rowMatchesFilters(data);});
+    // dataFiltered will update visibleRows; keep a synchronous fallback for counts.
+    state.visibleRows=state.previewRows.filter(rowMatchesFilters);
+    renderPreviewControls();
+  }
+
+  function renderPreview(){
+    initPreviewTable();
+    state.visibleRows=filteredRows();
+    if(!state.table){renderPreviewControls();return;}
+    state.table.setData(state.previewRows).then(function(){
+      applyPreviewFilters();
+      syncTableSelection();
+    });
+  }
+
   function renderPreviewControls(){
     const updateable=state.previewRows.filter(r=>r.updateable).length;
-    const selected=state.previewRows.filter(r=>r.selected).length;
+    const selected=state.previewRows.filter(r=>state.selectedIds.has(r._rowId)).length;
     const total=state.previewRows.length;
     const visible=state.visibleRows.length;
     const visibleUpdateable=state.visibleRows.filter(r=>r.updateable).length;
-    const visibleSelected=state.visibleRows.filter(r=>r.selected).length;
+    const visibleSelected=state.visibleRows.filter(r=>state.selectedIds.has(r._rowId)).length;
     els.summaryCounts.textContent=total+' contracts loaded; '+updateable+' matched CSV; '+selected+' selected for update. Visible: '+visible+'; visible updateable: '+visibleUpdateable+'; visible selected: '+visibleSelected+'.';
     els.selectAll.checked=updateable>0&&selected===updateable;
     els.btnRunDry.disabled=selected===0;els.btnRunUpdate.disabled=selected===0;
@@ -174,8 +239,8 @@
   }
   function appendAuditLine(text){els.auditLog.textContent+=text+'\n';els.auditLog.scrollTop=els.auditLog.scrollHeight;}
   async function runUpdates(dry){
-    const rows=state.previewRows.filter(r=>r.updateable && r.selected === true);
-    const visibleSelected=(state.visibleRows||[]).filter(r=>r.updateable && r.selected === true).length;
+    const rows=state.previewRows.filter(r=>r.updateable && state.selectedIds.has(r._rowId));
+    const visibleSelected=(state.visibleRows||[]).filter(r=>r.updateable && state.selectedIds.has(r._rowId)).length;
     if(!rows.length){setStatus(els.updateStatus,'No selected updateable rows. Use the row checkboxes or Select filtered first.','warn');return;}
     if(!dry){
       const hiddenSelected=rows.length-visibleSelected;
@@ -291,24 +356,19 @@
       els.btnExportAudit.disabled=state.audit.length===0;
     }
   }
-  function tableHtmlForExcel(tableEl){
-    const clone=tableEl.cloneNode(true);
-    // Replace checkbox cells by Yes/No so Excel contains useful values.
-    const bodyRows=clone.querySelectorAll('tbody tr');
-    bodyRows.forEach((tr,rowIndex)=>{
-      const sourceRow=state.visibleRows[rowIndex];
-      const first=tr.children[0];
-      if(first && sourceRow){
-        first.textContent=sourceRow.selected?'Yes':'No';
-      }
-    });
-    return '<table border="1">'+clone.innerHTML+'</table>';
+  function rowsToExcelHtml(rows){
+    const header=['Update','RegisterId','Node Code','Node Name','EmployeeId','ContractId','From','Till','Current externalContractId','CSV old','CSV new','Info'];
+    const body=rows.map(r=>[
+      state.selectedIds.has(r._rowId)?'Yes':'No',r.registerId,r.nodeCode,r.nodeName,r.employeeId,r.contractId,r.fromDate,r.tillDate,r.current,r.csvOld,r.csvNew,r.info
+    ]);
+    const tr=vals=>'<tr>'+vals.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>';
+    return '<table border="1"><thead><tr>'+header.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+body.map(tr).join('')+'</tbody></table>';
   }
 
   function exportPreviewExcel(){
-    const table=document.getElementById('previewTable');
-    if(!table || !state.previewRows.length)return;
-    const html='<!doctype html><html><head><meta charset="utf-8"></head><body>'+tableHtmlForExcel(table)+'</body></html>';
+    if(!state.previewRows.length)return;
+    const rows=state.visibleRows&&state.visibleRows.length?state.visibleRows:state.previewRows;
+    const html='<!doctype html><html><head><meta charset="utf-8"></head><body>'+rowsToExcelHtml(rows)+'</body></html>';
     const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -333,16 +393,16 @@
   els.yearInput.addEventListener('change',async()=>{if(els.salaryGroupSelect.value)try{await loadSalaryPeriods()}catch(e){setStatus(els.loadStatus,e.message,'danger')}});
   els.salaryPeriodSelect.addEventListener('change',updateLoadButton);els.btnLoadContracts.addEventListener('click',loadContracts);
   els.csvFile.addEventListener('change',async()=>{const f=els.csvFile.files&&els.csvFile.files[0];if(f){els.csvText.value=await f.text();parseCsv();}});els.btnParseCsv.addEventListener('click',parseCsv);
-  els.selectAll.addEventListener('change',()=>{state.previewRows.forEach(r=>{if(r.updateable)r.selected=els.selectAll.checked});renderPreview();});
-  if(els.filterSearch)els.filterSearch.addEventListener('input',renderPreviewDebounced);
-  if(els.filterInfo)els.filterInfo.addEventListener('change',renderPreview);
-  if(els.filterSelectedOnly)els.filterSelectedOnly.addEventListener('change',renderPreview);
-  if(els.filterUpdateableOnly)els.filterUpdateableOnly.addEventListener('change',renderPreview);
-  if(els.btnSelectFiltered)els.btnSelectFiltered.addEventListener('click',()=>{filteredRows().forEach(r=>{if(r.updateable)r.selected=true});renderPreview();});
-  if(els.btnDeselectFiltered)els.btnDeselectFiltered.addEventListener('click',()=>{filteredRows().forEach(r=>{if(r.updateable)r.selected=false});renderPreview();});
-  if(els.btnClearFilters)els.btnClearFilters.addEventListener('click',()=>{if(els.filterSearch)els.filterSearch.value='';if(els.filterInfo)els.filterInfo.value='';if(els.filterSelectedOnly)els.filterSelectedOnly.checked=false;if(els.filterUpdateableOnly)els.filterUpdateableOnly.checked=false;state.nodeFilterSelected.clear();uniqueNodeCodes().forEach(([code])=>state.nodeFilterSelected.add(code));renderNodeFilter();renderPreview();});
-  if(els.btnNodeAll)els.btnNodeAll.addEventListener('click',()=>{state.nodeFilterSelected.clear();uniqueNodeCodes().forEach(([code])=>state.nodeFilterSelected.add(code));renderNodeFilter();renderPreview();});
-  if(els.btnNodeNone)els.btnNodeNone.addEventListener('click',()=>{state.nodeFilterSelected.clear();renderNodeFilter();renderPreview();});
+  els.selectAll.addEventListener('change',()=>{state.selectedIds.clear();if(els.selectAll.checked){state.previewRows.forEach(r=>{if(r.updateable)state.selectedIds.add(r._rowId);});}syncTableSelection();});
+  if(els.filterSearch)els.filterSearch.addEventListener('input',debounce(applyPreviewFilters,150));
+  if(els.filterInfo)els.filterInfo.addEventListener('change',applyPreviewFilters);
+  if(els.filterSelectedOnly)els.filterSelectedOnly.addEventListener('change',applyPreviewFilters);
+  if(els.filterUpdateableOnly)els.filterUpdateableOnly.addEventListener('change',applyPreviewFilters);
+  if(els.btnSelectFiltered)els.btnSelectFiltered.addEventListener('click',()=>{filteredRows().forEach(r=>{if(r.updateable)state.selectedIds.add(r._rowId);});syncTableSelection();});
+  if(els.btnDeselectFiltered)els.btnDeselectFiltered.addEventListener('click',()=>{filteredRows().forEach(r=>{state.selectedIds.delete(r._rowId);});syncTableSelection();});
+  if(els.btnClearFilters)els.btnClearFilters.addEventListener('click',()=>{if(els.filterSearch)els.filterSearch.value='';if(els.filterInfo)els.filterInfo.value='';if(els.filterSelectedOnly)els.filterSelectedOnly.checked=false;if(els.filterUpdateableOnly)els.filterUpdateableOnly.checked=false;state.nodeFilterSelected.clear();uniqueNodeCodes().forEach(([code])=>state.nodeFilterSelected.add(code));renderNodeFilter();applyPreviewFilters();});
+  if(els.btnNodeAll)els.btnNodeAll.addEventListener('click',()=>{state.nodeFilterSelected.clear();uniqueNodeCodes().forEach(([code])=>state.nodeFilterSelected.add(code));renderNodeFilter();applyPreviewFilters();});
+  if(els.btnNodeNone)els.btnNodeNone.addEventListener('click',()=>{state.nodeFilterSelected.clear();renderNodeFilter();applyPreviewFilters();});
   els.btnRunDry.addEventListener('click',()=>runUpdates(true));els.btnRunUpdate.addEventListener('click',()=>runUpdates(false));if(els.btnExportPreviewExcel)els.btnExportPreviewExcel.addEventListener('click',exportPreviewExcel);els.btnExportAudit.addEventListener('click',exportAudit);
 
   function init(){els.yearInput.value=localTodayYear();updateBase();const s=readSession();if(s&&s.token&&s.scope===buildBasePath()){state.token=s.token;state.expiresAt=s.expiresAt||0;setStatus(els.authStatus,'Authenticated from saved session. Loading nodes...','ok');loadNodes().then(()=>setStatus(els.authStatus,'Authenticated from saved session.','ok')).catch(e=>setStatus(els.authStatus,e.message,'warn'));}}
