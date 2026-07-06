@@ -161,7 +161,7 @@
         {title:'RegisterId',field:'registerId',headerFilter:'input',frozen:true,width:130},
         {title:'Node Code',field:'nodeCode',headerFilter:'input',width:120},
         {title:'Node Name',field:'nodeName',headerFilter:'input',width:180},
-        {title:'EmployeeId',field:'employeeId',headerFilter:'input',width:220},
+        //{title:'EmployeeId',field:'employeeId',headerFilter:'input',width:220},
         {title:'ContractId',field:'contractId',headerFilter:'input',width:130},
         {title:'From',field:'fromDate',headerFilter:'input',width:110},
         {title:'Till',field:'tillDate',headerFilter:'input',width:110},
